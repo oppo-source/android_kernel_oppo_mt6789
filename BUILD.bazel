@@ -1801,7 +1801,6 @@ ddk_headers(
         "drivers/usb/gadget/function",
         "drivers/usb/host",
     ],
-    linux_includes = ["arch/arm64/kvm/hyp/include"],
     visibility = ["//visibility:private"],
 )
 
