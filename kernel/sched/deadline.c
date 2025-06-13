@@ -1607,7 +1607,11 @@ throttle:
  */
 void dl_server_update_idle_time(struct rq *rq, struct task_struct *p)
 {
+#if IS_ENABLED(CONFIG_MTK_ORIGIN_CHANGE)
+	s64 delta_exec;
+#else
 	s64 delta_exec, scaled_delta_exec;
+#endif
 
 	if (!rq->fair_server.dl_defer)
 		return;
@@ -1621,14 +1625,12 @@ void dl_server_update_idle_time(struct rq *rq, struct task_struct *p)
 		return;
 
 #if IS_ENABLED(CONFIG_MTK_ORIGIN_CHANGE)
-	scaled_delta_exec = delta_exec;
-	if (!rq->fair_server.dl_server)
-		scaled_delta_exec = dl_scaled_delta_exec(rq, &rq->fair_server, delta_exec);
+	rq->fair_server.runtime -= delta_exec;
 #else
 	scaled_delta_exec = dl_scaled_delta_exec(rq, &rq->fair_server, delta_exec);
-#endif
 
 	rq->fair_server.runtime -= scaled_delta_exec;
+#endif
 
 	if (rq->fair_server.runtime < 0) {
 		rq->fair_server.dl_defer_running = 0;
