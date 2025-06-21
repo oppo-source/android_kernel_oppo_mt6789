@@ -39,6 +39,10 @@
 
 #include "u_fs.h"
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+#include <linux/power_supply.h>
+#endif
+
 /* workaround for f_fs use after free issue */
 struct ffs_ep {
 	struct usb_ep *ep;
@@ -2333,10 +2337,16 @@ static int musb_gadget_vbus_draw
 		(struct usb_gadget *gadget, unsigned int mA)
 {
 	struct musb *musb = gadget_to_musb(gadget);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	musb->vbus_draw = mA;
+	schedule_work(&musb->draw_work);
 
+	return 0;
+#else
 	if (!musb->xceiv->set_power)
 		return -EOPNOTSUPP;
 	return usb_phy_set_power(musb->xceiv, mA);
+#endif
 }
 
 static void musb_gadget_set_ready(struct usb_gadget *gadget)
@@ -2412,6 +2422,27 @@ static void musb_gadget_async_callbacks(struct usb_gadget *g, bool enable)
 	spin_unlock_irqrestore(&musb->lock, flags);
 }
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+static void musb_vbus_draw_work(struct work_struct *data)
+{
+	struct musb *musb = container_of(data, struct musb, draw_work);
+	static struct power_supply *chg_psy;
+	union power_supply_propval val;
+
+	INFO("%s %d mA\n", __func__, musb->vbus_draw);
+
+	if (chg_psy == NULL)
+		chg_psy = power_supply_get_by_name("battery");
+	if (chg_psy == NULL || IS_ERR(chg_psy)) {
+		INFO("%s Couldn't get chg_psy\n", __func__);
+	}
+
+	val.intval = !(musb->vbus_draw > USB_SELF_POWER_VBUS_MAX_DRAW);
+	INFO("%s intval: %d\n", __func__, val.intval);
+	power_supply_set_property(chg_psy,
+		 POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT, &val);
+}
+#endif
 
 static const struct usb_gadget_ops musb_gadget_operations = {
 	.get_frame = musb_gadget_get_frame,
@@ -2541,7 +2572,9 @@ int musb_gadget_setup(struct musb *musb)
 	musb->g.is_otg = 0;
 
 	musb_g_init_endpoints(musb);
-
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	INIT_WORK(&musb->draw_work, musb_vbus_draw_work);
+#endif
 	musb->is_active = 0;
 	musb->g.irq = musb->nIrq;
 	musb_platform_try_idle(musb, 0);

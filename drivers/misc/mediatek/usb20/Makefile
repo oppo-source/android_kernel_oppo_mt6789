@@ -17,6 +17,7 @@
 
 ccflags-y := -I$(srctree)/drivers/usb/gadget/
 ccflags-y += -I$(srctree)/drivers/usb/gadget/function
+subdir-ccflags-y += -I$(srctree)/drivers/misc/mediatek/typec/tcpc/inc
 
 ifeq ($(MTK_ALPS_BOX_SUPPORT),yes)
 ccflags-y += -DMTK_ALPS_BOX_SUPPORT

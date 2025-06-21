@@ -18,6 +18,10 @@
 
 #define MTK_CTD_DRV_VERSION	"1.0.0_MTK"
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+extern bool oplus_chg_wake_update_work(void);
+#endif
+
 struct mtk_ctd_info {
 	struct device *dev;
 	/* device tree */
@@ -154,7 +158,7 @@ static void handle_pd_rdy_attach(struct mtk_ctd_info *mci, struct tcp_notify *no
 		mci->pd_rdy = true;
 		mutex_unlock(&mci->attach_lock);
 
-		usb_comm = tcpm_is_comm_capable(mci->tcpc_dev);
+		usb_comm = tcpm_inquire_usb_comm(mci->tcpc_dev);
 		tcpm_get_remote_power_cap(mci->tcpc_dev, &cap);
 		watt = cap.max_mv[0] * cap.ma[0];
 		dev_info(mci->dev, "%s: mv:%d, ma:%d, watt: %d\n",

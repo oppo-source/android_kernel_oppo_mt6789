@@ -496,6 +496,10 @@ struct musb {
 	u32 mtk_usb_phy_offset;
 	unsigned is_gadget_ready:1;
 	unsigned async_callbacks:1;
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	struct work_struct draw_work;
+	unsigned vbus_draw;
+#endif
 };
 
 static inline struct musb *gadget_to_musb(struct usb_gadget *g)

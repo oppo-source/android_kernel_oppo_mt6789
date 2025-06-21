@@ -9,8 +9,15 @@
 #include <linux/spinlock.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
-
+#include <linux/usb/composite.h>
 #include "musb_core.h"
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+#if IS_ENABLED(CONFIG_TCPC_CLASS)
+#include "tcpm.h"
+#include "tcpci_core.h"
+#endif
+#endif
 
 /* ep0 is always musb->endpoints[0].ep_in */
 #define	next_ep0_request(musb)	next_in_request(&(musb)->endpoints[0])
@@ -650,6 +657,99 @@ musb_read_setup(struct musb *musb, struct usb_ctrlrequest *req)
 		musb->ep0_state = MUSB_EP0_STAGE_RX;
 }
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+#if IS_ENABLED(CONFIG_TCPC_CLASS)
+static bool is_usb_pd(void)
+{
+
+#if IS_ENABLED (CONFIG_USB_POWER_DELIVERY)
+	struct tcpc_device *tcpc_dev;
+	struct pd_port *pd_port;
+
+	tcpc_dev = tcpc_dev_get_by_name("type_c_port0");
+	if (!tcpc_dev)
+		return false;
+
+	pd_port = &tcpc_dev->pd_port;
+
+	pr_info("%s pe_ready=%d, explicit_contract=%d \n", __func__,
+			pd_port->pe_data.pe_ready, pd_port->pe_data.explicit_contract);
+
+	if (pd_port->pe_data.explicit_contract)
+		return true;
+	else
+		return false;
+#else
+	return false;
+#endif
+}
+#endif
+
+static struct usb_configuration* get_config_for_pd(struct usb_composite_dev *cdev, unsigned w_value)
+{
+	struct usb_gadget		*gadget = cdev->gadget;
+	struct usb_configuration	*c;
+	struct list_head		*pos;
+	u8				type = w_value >> 8;
+	enum usb_device_speed		speed = USB_SPEED_UNKNOWN;
+
+	if (gadget->speed >= USB_SPEED_SUPER)
+		speed = gadget->speed;
+	else if (gadget_is_dualspeed(gadget)) {
+		int	hs = 0;
+		if (gadget->speed == USB_SPEED_HIGH)
+			hs = 1;
+		if (type == USB_DT_OTHER_SPEED_CONFIG)
+			hs = !hs;
+		if (hs)
+			speed = USB_SPEED_HIGH;
+
+	}
+
+	/* This is a lookup by config *INDEX* */
+	w_value &= 0xff;
+
+	pos = &cdev->configs;
+	c = cdev->os_desc_config;
+	if (c)
+		goto check_config;
+
+	while ((pos = pos->next) !=  &cdev->configs) {
+		c = list_entry(pos, typeof(*c), list);
+
+		/* skip OS Descriptors config which is handled separately */
+		if (c == cdev->os_desc_config)
+			continue;
+
+check_config:
+		/* ignore configs that won't work at this speed */
+		switch (speed) {
+		case USB_SPEED_SUPER_PLUS:
+			if (!c->superspeed_plus)
+				continue;
+			break;
+		case USB_SPEED_SUPER:
+			if (!c->superspeed)
+				continue;
+			break;
+		case USB_SPEED_HIGH:
+			if (!c->highspeed)
+				continue;
+			break;
+		default:
+			if (!c->fullspeed)
+				continue;
+		}
+
+		if (w_value == 0) {
+			return c;
+		}
+		w_value--;
+	}
+	return NULL;
+}
+#endif
+
 static int
 forward_to_driver(struct musb *musb, const struct usb_ctrlrequest *ctrlrequest)
 __releases(musb->lock)
@@ -692,6 +792,15 @@ irqreturn_t musb_g_ep0_irq(struct musb *musb)
 	void __iomem	*regs = musb->endpoints[0].regs;
 	irqreturn_t	retval = IRQ_NONE;
 	bool setup_end_err = false;
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+#if IS_ENABLED(CONFIG_TCPC_CLASS)
+	bool isConfigChanged = false;
+	struct usb_configuration	*config;
+	u8			bmAttributes_bak;
+	u16			MaxPower_bak;
+#endif
+#endif
 
 	musb_ep_select(mbase, 0);	/* select ep0 */
 	csr = musb_readw(regs, MUSB_CSR0);
@@ -921,7 +1030,38 @@ setup:
 			else if (handled > 0)
 				goto finish;
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+#if IS_ENABLED(CONFIG_TCPC_CLASS)
+	if (setup.bRequest == USB_REQ_GET_DESCRIPTOR) {
+		struct usb_composite_dev *cdev = get_gadget_data(&musb->g);
+		u16 w_value = le16_to_cpu(setup.wValue);
+              pr_err("%s get descriptor\n", __func__);
+
+		if (w_value >> 8 == USB_DT_CONFIG && is_usb_pd()) {
+			config = get_config_for_pd(cdev, w_value);
+			if (config) {
+				isConfigChanged = true;
+				bmAttributes_bak = config->bmAttributes;
+				MaxPower_bak = config->MaxPower;
+				config->bmAttributes |= USB_CONFIG_ATT_SELFPOWER;
+				config->MaxPower = 0;
+                             pr_err(" %s config->MaxPower = 0\n", __func__);
+			}
+		}
+	}
+#endif
+#endif
+
 			handled = forward_to_driver(musb, &setup);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+#if IS_ENABLED(CONFIG_TCPC_CLASS)
+	if (isConfigChanged) {
+		config->bmAttributes = bmAttributes_bak;
+		config->MaxPower = MaxPower_bak;
+              pr_err(" %s reset config->MaxPower = %d\n", __func__, config->MaxPower);
+	}
+#endif
+#endif
 			if (handled < 0) {
 				musb_ep_select(mbase, 0);
 stall:
@@ -999,8 +1139,10 @@ musb_g_ep0_queue(struct usb_ep *e, struct usb_request *r, gfp_t gfp_flags)
 
 	if (!musb->is_active) {
 		DBG(0, "ep0 request queued when usb not active\n");
+#ifndef OPLUS_FEATURE_CHG_BASIC
 		status = -EINVAL;
 		goto cleanup;
+#endif
 	}
 
 	if (!list_empty(&ep->req_list)) {
