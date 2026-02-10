@@ -1645,6 +1645,25 @@ ddk_headers(
     visibility = ["//visibility:private"],
 )
 
+# oplus modules depend on ack need headers add here
+# globs() for all architectures
+filegroup(
+    name = "all_headers_allowlist_common_globs_oplus",
+    srcs = glob([
+        "kernel/**/*.h",
+        "fs/**/*.h",
+        "mm/*.h",
+        "block/*.h",
+        "drivers/md/*.h"
+    ]),
+    visibility = ["//visibility:private"],
+)
+# oplus modules depend on ack need directory add here
+linux_includes_oplus = [
+    "block",
+    "drivers/md",
+]
+
 # DDK headers allowlist. This is the list of all headers and include
 # directories that are safe to use in DDK modules.
 ddk_headers(
@@ -1661,6 +1680,7 @@ ddk_headers(
         "drivers/ufs/core/ufshcd-priv.h",
         "drivers/ufs/host/ufshcd-pltfrm.h",
         "drivers/usb/dwc3/core.h",
+        "drivers/gpio/gpiolib.h",
         "sound/usb/card.h",
         "sound/usb/usbaudio.h",
         ":all_headers_allowlist_aarch64_globs",
@@ -1668,6 +1688,7 @@ ddk_headers(
         ":all_headers_allowlist_exynos",
         ":pkvm_headers_aarch64",
         ":xhci_headers",
+	    ":all_headers_allowlist_common_globs_oplus",
     ],
     # The list of include directories where source files can #include headers
     # from. In other words, these are the `-I` option to the C compiler.
@@ -1684,7 +1705,7 @@ ddk_headers(
         "sound/usb",
         "include",
         "include/uapi",
-    ],
+    ] + linux_includes_oplus,
     visibility = ["//visibility:private"],
 )
 

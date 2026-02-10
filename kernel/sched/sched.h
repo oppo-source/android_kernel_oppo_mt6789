@@ -1167,6 +1167,10 @@ struct rq {
 #endif
 
 	struct sched_dl_entity	fair_server;
+#if IS_ENABLED(CONFIG_MTK_ORIGIN_CHANGE)
+	u64	replenish_count;
+	u64	replenish_fail_count;
+#endif
 
 #ifdef CONFIG_FAIR_GROUP_SCHED
 	/* list of leaf cfs_rq on this CPU: */

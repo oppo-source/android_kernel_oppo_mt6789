@@ -1415,8 +1415,17 @@ vm_fault_t vmf_insert_pfn_pmd(struct vm_fault *vmf, pfn_t pfn, bool write)
 						(VM_PFNMAP|VM_MIXEDMAP));
 	BUG_ON((vma->vm_flags & VM_PFNMAP) && is_cow_mapping(vma->vm_flags));
 
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+	if (addr < vma->vm_start || addr >= vma->vm_end) {
+		if (current->pid == 0x1)
+			pr_info("VM_FAULT_SIGBUS: addr < vma->vm_start || addr >= vma->vm_end: %s:%d\n",
+			__func__, __LINE__);
+		return VM_FAULT_SIGBUS;
+	}
+#else
 	if (addr < vma->vm_start || addr >= vma->vm_end)
 		return VM_FAULT_SIGBUS;
+#endif
 
 	if (arch_needs_pgtable_deposit()) {
 		pgtable = pte_alloc_one(vma->vm_mm);
@@ -1503,8 +1512,17 @@ vm_fault_t vmf_insert_pfn_pud(struct vm_fault *vmf, pfn_t pfn, bool write)
 						(VM_PFNMAP|VM_MIXEDMAP));
 	BUG_ON((vma->vm_flags & VM_PFNMAP) && is_cow_mapping(vma->vm_flags));
 
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+	if (addr < vma->vm_start || addr >= vma->vm_end) {
+		if (current->pid == 0x1)
+			pr_info("VM_FAULT_SIGBUS: addr < vma->vm_start || addr >= vma->vm_end: %s:%d\n",
+			__func__, __LINE__);
+		return VM_FAULT_SIGBUS;
+	}
+#else
 	if (addr < vma->vm_start || addr >= vma->vm_end)
 		return VM_FAULT_SIGBUS;
+#endif
 
 	track_pfn_insert(vma, &pgprot, pfn);
 

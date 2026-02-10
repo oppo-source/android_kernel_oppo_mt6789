@@ -6161,6 +6161,11 @@ static vm_fault_t hugetlb_no_page(struct address_space *mapping,
 				restore_reserve_on_error(h, vma, vmf->address,
 							folio);
 				folio_put(folio);
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+				if (current->pid == 0x1)
+					pr_info("VM_FAULT_SIGBUS: hugetlb_add_to_page_cache: %s:%d\n",
+					__func__, __LINE__);
+#endif
 				ret = VM_FAULT_SIGBUS;
 				goto out;
 			}
@@ -6248,6 +6253,11 @@ static vm_fault_t hugetlb_no_page(struct address_space *mapping,
 
 	folio_unlock(folio);
 out:
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+	if (ret == VM_FAULT_SIGBUS && current->pid == 0x1)
+		pr_info("VM_FAULT_SIGBUS: hugetlb_vma_unlock_read before return: %s:%d\n",
+			__func__, __LINE__);
+#endif
 	hugetlb_vma_unlock_read(vma);
 
 	/*

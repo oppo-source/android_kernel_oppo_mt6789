@@ -3698,6 +3698,11 @@ static void *__vmalloc_area_node(struct vm_struct *area, gfp_t gfp_mask,
 		 * Since we always retry allocations at order-0 in the huge page
 		 * case a warning for either is spurious.
 		 */
+#ifdef CONFIG_MTK_VM_DEBUG
+		if (fatal_signal_pending(current))
+			pr_info("%s, vmalloc abort: fatal_signal_pending\n",
+				__func__);
+#endif
 		if (!fatal_signal_pending(current) && page_order == 0)
 			warn_alloc(gfp_mask, NULL,
 				"vmalloc error: size %lu, failed to allocate pages",

@@ -910,9 +910,17 @@ static bool prepare_signal(int sig, struct task_struct *p, bool force)
 	struct task_struct *t;
 	sigset_t flush;
 
+#if IS_ENABLED(CONFIG_MTK_AVOID_TRUNCATE_COREDUMP)
+	if (signal->flags & SIGNAL_GROUP_EXIT ||
+		 (signal->ncore_state && sig == SIGKILL)) {
+		if (signal->core_state || (signal->ncore_state && sig == SIGKILL))
+			pr_info("[%d:%s] skip sig %d due to coredump\n",
+				p->pid, p->comm, sig);
+#else
 	if (signal->flags & SIGNAL_GROUP_EXIT) {
 		if (signal->core_state)
 			return sig == SIGKILL;
+#endif
 		/*
 		 * The process is in the middle of dying, drop the signal.
 		 */
@@ -2831,6 +2839,12 @@ relock:
 		if (ka->sa.sa_handler == SIG_IGN) /* Do nothing.  */
 			continue;
 		if (ka->sa.sa_handler != SIG_DFL) {
+#if IS_ENABLED(CONFIG_MTK_AVOID_TRUNCATE_COREDUMP)
+			if ((ksig->info.si_signo == SIGSEGV) &&
+					((ksig->info.si_code == SEGV_MTEAERR) ||
+					(ksig->info.si_code == SEGV_MTESERR)))
+				signal->ncore_state = 1;
+#endif
 			/* Run the handler.  */
 			ksig->ka = *ka;
 

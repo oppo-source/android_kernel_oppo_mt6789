@@ -673,6 +673,19 @@ static int drm_atomic_plane_check(const struct drm_plane_state *old_plane_state,
 			       new_plane_state->src_y >> 16,
 			       ((new_plane_state->src_y & 0xffff) * 15625) >> 10,
 			       fb->width, fb->height);
+#if IS_ENABLED(CONFIG_MTK_DISP_DEBUG)
+		pr_err("[PLANE:%d:%s] invalid source coordinates %u.%06ux%u.%06u+%u.%06u+%u.%06u (fb %ux%u)\n",
+			plane->base.id, plane->name,
+			new_plane_state->src_w >> 16,
+			((new_plane_state->src_w & 0xffff) * 15625) >> 10,
+			new_plane_state->src_h >> 16,
+			((new_plane_state->src_h & 0xffff) * 15625) >> 10,
+			new_plane_state->src_x >> 16,
+			((new_plane_state->src_x & 0xffff) * 15625) >> 10,
+			new_plane_state->src_y >> 16,
+			((new_plane_state->src_y & 0xffff) * 15625) >> 10,
+			fb->width, fb->height);
+#endif
 		return -ENOSPC;
 	}
 
