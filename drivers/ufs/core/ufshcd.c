@@ -4438,13 +4438,21 @@ out:
 	hba->uic_async_done = NULL;
 	if (reenable_intr)
 		ufshcd_enable_intr(hba, UIC_COMMAND_COMPL);
-	if (ret) {
+	if (ret && !hba->pm_op_in_progress) {
 		ufshcd_set_link_broken(hba);
 		ufshcd_schedule_eh_work(hba);
 	}
 out_unlock:
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 	mutex_unlock(&hba->uic_cmd_mutex);
+
+	/*
+	 * If the h8 exit fails during the runtime resume process,
+	 * it becomes stuck and cannot be recovered through the error handler.
+	 * To fix this, use link recovery instead of the error handler.
+	 */
+	if (ret && hba->pm_op_in_progress)
+		ret = ufshcd_link_recovery(hba);
 
 	return ret;
 }
@@ -10441,6 +10449,9 @@ static void ufshcd_wl_shutdown(struct device *dev)
 		scsi_device_set_state(sdev, SDEV_OFFLINE);
 		mutex_unlock(&sdev->state_mutex);
 	}
+#if IS_ENABLED(CONFIG_MTK_UFS_DEBUG_BUILD)
+	ufshcd_wait_for_doorbell_clr(hba,  3 * USEC_PER_SEC);
+#endif
 	__ufshcd_wl_suspend(hba, UFS_SHUTDOWN_PM);
 
 	/*

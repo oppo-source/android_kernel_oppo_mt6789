@@ -20,6 +20,11 @@
 #include <linux/leds.h>
 #include "../leds.h"
 
+/*#ifdef OPLUS_FEATURE_CHG_BASIC*/
+/*BSP.CHG.Basic 2025/10/30 add for delay the vibration time to 35ms*/
+#define VIBR_TIME 35 /*ms*/
+/*#endif*/
+
 struct transient_trig_data {
 	int activate;
 	int state;
@@ -66,6 +71,12 @@ static ssize_t transient_activate_store(struct device *dev,
 
 	/* cancel the running timer */
 	if (state == 0 && transient_data->activate == 1) {
+/*#ifdef OPLUS_FEATURE_CHG_BASIC*/
+/*BSP.CHG.Basic 2025/10/30 add for delay the vibration time to 35ms*/
+		if (transient_data->duration == VIBR_TIME) {
+			return size;
+		}
+/*#endif*/
 		del_timer(&transient_data->timer);
 		transient_data->activate = state;
 		led_set_brightness_nosleep(led_cdev,
@@ -111,7 +122,13 @@ static ssize_t transient_duration_store(struct device *dev,
 	ret = kstrtoul(buf, 10, &state);
 	if (ret)
 		return ret;
-
+/*#ifdef OPLUS_FEATURE_CHG_BASIC*/
+/*BSP.CHG.Basic 2025/10/30 add for delay the vibration time to 35ms*/
+	if (state < VIBR_TIME) {
+		printk("vibr transient_duration_store time %lu\n", state);
+		state = VIBR_TIME;
+	}
+/*#endif*/
 	transient_data->duration = state;
 	return size;
 }

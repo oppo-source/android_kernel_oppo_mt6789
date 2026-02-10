@@ -2159,6 +2159,11 @@ static vm_fault_t special_mapping_fault(struct vm_fault *vmf)
 		return 0;
 	}
 
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+	if (current->pid == 1)
+		pr_info("VM_FAULT_SIGBUS: mmap before return: %s:%d\n",
+		__func__, __LINE__);
+#endif
 	return VM_FAULT_SIGBUS;
 }
 

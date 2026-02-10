@@ -3375,8 +3375,17 @@ vm_fault_t filemap_fault(struct vm_fault *vmf)
 	bool mapping_locked = false;
 
 	max_idx = DIV_ROUND_UP(i_size_read(inode), PAGE_SIZE);
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+	if (unlikely(index >= max_idx)) {
+		if (current->pid == 0x1)
+			pr_info("VM_FAULT_SIGBUS: unlikely(index >= max_idx): %s:%d\n",
+			__func__, __LINE__);
+		return VM_FAULT_SIGBUS;
+	}
+#else
 	if (unlikely(index >= max_idx))
 		return VM_FAULT_SIGBUS;
+#endif
 
 	trace_mm_filemap_fault(mapping, index);
 
@@ -3424,6 +3433,8 @@ retry_find:
 			return VM_FAULT_OOM;
 		}
 	}
+
+	trace_android_vh_filemap_fault_pre_folio_locked(folio);
 
 	if (!lock_folio_maybe_drop_mmap(vmf, folio, &fpin))
 		goto out_retry;
@@ -3482,6 +3493,11 @@ retry_find:
 	if (unlikely(index >= max_idx)) {
 		folio_unlock(folio);
 		folio_put(folio);
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+		if (current->pid == 0x1)
+			pr_info("VM_FAULT_SIGBUS: unlikely(index >= max_idx): %s:%d\n",
+			__func__, __LINE__);
+#endif
 		return VM_FAULT_SIGBUS;
 	}
 
@@ -3507,6 +3523,11 @@ page_not_uptodate:
 		goto retry_find;
 	filemap_invalidate_unlock_shared(mapping);
 
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+		if (current->pid == 0x1)
+			pr_info("VM_FAULT_SIGBUS: page_not_uptodate: %s:%d\n",
+			__func__, __LINE__);
+#endif
 	return VM_FAULT_SIGBUS;
 
 out_retry:
@@ -3742,6 +3763,7 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 		last_pgoff = xas.xa_index;
 		end = folio_next_index(folio) - 1;
 		nr_pages = min(end, end_pgoff) - xas.xa_index + 1;
+		trace_android_vh_filemap_pages(folio);
 
 		if (!folio_test_large(folio))
 			ret |= filemap_map_order0_folio(vmf,
@@ -3752,6 +3774,7 @@ vm_fault_t filemap_map_pages(struct vm_fault *vmf,
 					nr_pages, &rss, &mmap_miss);
 
 		folio_unlock(folio);
+		trace_android_vh_filemap_folio_mapped(folio);
 		folio_put(folio);
 	} while ((folio = next_uptodate_folio(&xas, mapping, end_pgoff)) != NULL);
 	add_mm_counter(vma->vm_mm, folio_type, rss);
@@ -3829,6 +3852,11 @@ int generic_file_readonly_mmap(struct file *file, struct vm_area_struct *vma)
 #else
 vm_fault_t filemap_page_mkwrite(struct vm_fault *vmf)
 {
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+	if (current->pid == 0x1)
+		pr_info("VM_FAULT_SIGBUS: filemap_page_mkwrite before return: %s:%d\n",
+		__func__, __LINE__);
+#endif
 	return VM_FAULT_SIGBUS;
 }
 int generic_file_mmap(struct file *file, struct vm_area_struct *vma)

@@ -92,7 +92,8 @@ void anon_vma_name_free(struct kref *kref)
 
 struct anon_vma_name *anon_vma_name(struct vm_area_struct *vma)
 {
-	mmap_assert_locked(vma->vm_mm);
+	if (!rwsem_is_locked(&vma->vm_mm->mmap_lock))
+		vma_assert_locked(vma);
 
 	return vma->anon_name;
 }
@@ -1002,6 +1003,11 @@ static long madvise_populate(struct mm_struct *mm, unsigned long start,
 			case -EHWPOISON:
 				return -EHWPOISON;
 			case -EFAULT: /* VM_FAULT_SIGBUS or VM_FAULT_SIGSEGV */
+#if IS_ENABLED(CONFIG_MTK_VM_DEBUG)
+				if (current->pid == 0x1)
+					pr_info("VM_FAULT_SIGBUS: case -EFAULT: %s:%d\n",
+					__func__, __LINE__);
+#endif
 				return -EFAULT;
 			default:
 				pr_warn_once("%s: unhandled return value: %ld\n",

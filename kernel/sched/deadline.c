@@ -1542,9 +1542,18 @@ throttle:
 		}
 
 		if (unlikely(is_dl_boosted(dl_se) || !start_dl_timer(dl_se))) {
+#if IS_ENABLED(CONFIG_MTK_ORIGIN_CHANGE)
+			if (dl_server(dl_se)) {
+				rq->replenish_count++;
+				replenish_dl_new_period(dl_se, rq);
+				if(!start_dl_timer(dl_se))
+					rq->replenish_fail_count++;
+			} else
+#else
 			if (dl_server(dl_se))
 				enqueue_dl_entity(dl_se, ENQUEUE_REPLENISH);
 			else
+#endif
 				enqueue_task_dl(rq, dl_task_of(dl_se), ENQUEUE_REPLENISH);
 		}
 
@@ -1597,7 +1606,9 @@ throttle:
  */
 void dl_server_update_idle_time(struct rq *rq, struct task_struct *p)
 {
+
 	s64 delta_exec;
+
 
 	if (!rq->fair_server.dl_defer)
 		return;

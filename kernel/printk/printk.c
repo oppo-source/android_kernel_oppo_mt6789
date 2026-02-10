@@ -531,6 +531,18 @@ static char __log_buf[__LOG_BUF_LEN] __aligned(LOG_ALIGN);
 static char *log_buf = __log_buf;
 static u32 log_buf_len = __LOG_BUF_LEN;
 
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+#define UART_INDEX	(30)
+#define CPU_INDEX	(24)
+
+static atomic_t uart_status __read_mostly = ATOMIC_INIT(0);
+void set_uart_status(int value)
+{
+	atomic_set(&uart_status, value);
+}
+EXPORT_SYMBOL_GPL(set_uart_status);
+#endif
+
 /*
  * Define the average message size. This only affects the number of
  * descriptors that will be available. Underestimating is better than
@@ -666,16 +678,29 @@ static ssize_t info_print_ext_header(char *buf, size_t size,
 				     struct printk_info *info)
 {
 	u64 ts_usec = info->ts_nsec;
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	char caller[21];
+#else
 	char caller[20];
+#endif
+
 #ifdef CONFIG_PRINTK_CALLER
 	int vh_ret = 0;
 	u32 id = info->caller_id;
 
 	trace_android_vh_printk_ext_header(caller, sizeof(caller), id, &vh_ret);
 
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	u32 pid = id & ~0x80000000;
+	if (!vh_ret)
+		snprintf(caller, sizeof(caller), ",caller=%c%1u%02u%08u",
+			 id & 0x80000000 ? 'C' : 'T', pid >> UART_INDEX,
+			 (pid & ~0x40000000) >> CPU_INDEX,  pid & ~0xFF000000);
+#else
 	if (!vh_ret)
 		snprintf(caller, sizeof(caller), ",caller=%c%u",
 			 id & 0x80000000 ? 'C' : 'T', id & ~0x80000000);
+#endif
 #else
 	caller[0] = '\0';
 #endif
@@ -1373,13 +1398,25 @@ static size_t print_time(u64 ts, char *buf)
 #ifdef CONFIG_PRINTK_CALLER
 static size_t print_caller(u32 id, char *buf)
 {
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	char caller[13];
+#else
 	char caller[12];
+#endif
 	int vh_ret = 0;
 
 	trace_android_vh_printk_caller(caller, sizeof(caller), id, &vh_ret);
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	u32 pid = id & ~0x80000000;
+	if (!vh_ret)
+		snprintf(caller, sizeof(caller), "%c%1u%02u%08u",
+			 id & 0x80000000 ? 'C' : 'T', pid >> UART_INDEX,
+			 (pid & ~0x40000000) >> CPU_INDEX,  pid & ~0xFF000000);
+#else
 	if (!vh_ret)
 		snprintf(caller, sizeof(caller), "%c%u",
 			 id & 0x80000000 ? 'C' : 'T', id & ~0x80000000);
+#endif
 	return sprintf(buf, "[%6s]", caller);
 }
 #else
@@ -2154,8 +2191,13 @@ static inline u32 printk_caller_id(void)
 	if (caller_id)
 		return caller_id;
 
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	return (in_task() ? 0 : 0x80000000) + (atomic_read(&uart_status) << UART_INDEX) +
+		(smp_processor_id() << CPU_INDEX) + task_pid_nr(current);
+#else
 	return in_task() ? task_pid_nr(current) :
 		0x80000000 + smp_processor_id();
+#endif
 }
 
 /**
@@ -2209,6 +2251,10 @@ static u16 printk_sprint(char *text, u16 size, int facility,
 			 va_list args)
 {
 	u16 text_len;
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	u16 mtk_prefix_len;
+	char textbuf[TASK_COMM_LEN + 3];
+#endif
 
 	text_len = vscnprintf(text, size, fmt, args);
 
@@ -2228,6 +2274,21 @@ static u16 printk_sprint(char *text, u16 size, int facility,
 			memmove(text, text + prefix_len, text_len);
 		}
 	}
+
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	if (!(*flags & LOG_CONT)) {
+		mtk_prefix_len = scnprintf(textbuf, sizeof(textbuf), "%s: ", current->comm);
+		if (likely((text_len + mtk_prefix_len) < size)) {
+			memmove(text + mtk_prefix_len, text, text_len);
+			text_len += mtk_prefix_len;
+		} else {
+			memmove(text + mtk_prefix_len, text, size - 1 - mtk_prefix_len);
+			text_len = size - 1;
+		}
+		memcpy(text, textbuf, mtk_prefix_len);
+		text[size - 1] = '\0';
+	}
+#endif
 
 	trace_console(text, text_len);
 
@@ -2314,6 +2375,11 @@ int vprintk_store(int facility, int level,
 	 * prb_reserve_in_last() and prb_reserve() purposely invalidate the
 	 * structure when they fail.
 	 */
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	reserve_size += strnlen(current->comm, TASK_COMM_LEN) + 2;
+	if (reserve_size > PRINTKRB_RECORD_MAX)
+		reserve_size = PRINTKRB_RECORD_MAX;
+#endif
 	prb_rec_init_wr(&r, reserve_size);
 	if (!prb_reserve(&e, prb, &r)) {
 		/* truncate the message if it is too long for empty buffer */
@@ -4101,6 +4167,11 @@ void register_console(struct console *newcon)
 
 	console_sysfs_notify();
 
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	if (!strncmp(newcon->name, "ttyS", 4))
+		atomic_set(&uart_status, 1);
+#endif
+
 	/*
 	 * By unregistering the bootconsoles after we enable the real console
 	 * we get the "console xxx enabled" message on all the consoles -
@@ -4139,6 +4210,11 @@ static int unregister_console_locked(struct console *console)
 	int res;
 
 	lockdep_assert_console_list_lock_held();
+
+#ifdef CONFIG_MTK_PRINTK_DEBUG
+	if (!strncmp(console->name, "ttyS", 4))
+		atomic_set(&uart_status, 0);
+#endif
 
 	con_printk(KERN_INFO, console, "disabled\n");
 

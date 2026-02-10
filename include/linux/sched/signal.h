@@ -122,6 +122,9 @@ struct signal_struct {
 
 	struct core_state *core_state; /* coredumping support */
 
+#if IS_ENABLED(CONFIG_MTK_AVOID_TRUNCATE_COREDUMP)
+	bool ncore_state;  /* for MTE error native core dump support */
+#endif
 	/*
 	 * PR_SET_CHILD_SUBREAPER marks a process, like a service
 	 * manager, to re-parent orphan (double-forking) child processes

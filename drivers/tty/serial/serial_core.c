@@ -75,6 +75,27 @@ static inline void uart_port_deref(struct uart_port *uport)
 		wake_up(&uport->state->remove_wait);
 }
 
+#if IS_ENABLED(CONFIG_MTK_PRINTK_DEFERRED)
+#define uart_port_lock(state, flags)					\
+	({								\
+		struct uart_port *__uport = uart_port_ref(state);	\
+		if (__uport) {						\
+			uart_port_lock_irqsave(__uport, &flags);	\
+			printk_deferred_enter();			\
+		}							\
+		__uport;						\
+	})
+
+#define uart_port_unlock(uport, flags)					\
+	({								\
+		struct uart_port *__uport = uport;			\
+		if (__uport) {						\
+			printk_deferred_exit();				\
+			uart_port_unlock_irqrestore(__uport, flags);	\
+			uart_port_deref(__uport);			\
+		}							\
+	})
+#else
 #define uart_port_lock(state, flags)					\
 	({								\
 		struct uart_port *__uport = uart_port_ref(state);	\
@@ -91,6 +112,7 @@ static inline void uart_port_deref(struct uart_port *uport)
 			uart_port_deref(__uport);			\
 		}							\
 	})
+#endif
 
 static inline struct uart_port *uart_port_check(struct uart_state *state)
 {
